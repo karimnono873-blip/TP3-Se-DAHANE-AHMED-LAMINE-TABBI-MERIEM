@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compte Rendu TP3 - LCD & I2C (Systèmes Embarqués)</title>
+    <style>
+        /* ================= VARIABLES & THEME ================= */
+        :root {
+            --pixel-blue: #8AB4F8;
+            --pixel-dark-blue: #1A73E8;
+            --pixel-violet: #A142F4;
+            --pixel-dark-violet: #6A1B9A;
+            --bg-deep-space: #0B0B1A;
+            --glass-bg: rgba(25, 25, 45, 0.6);
+            --glass-border: rgba(138, 180, 248, 0.2);
+            --text-main: #E8EAED;
+            --text-muted: #9AA0A6;
+            --glow-shadow: 0 0 20px rgba(161, 66, 244, 0.4);
+            --lcd-bg: #0d47a1;
+            --lcd-text: #e3f2fd;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-deep-space); color: var(--text-main); overflow-x: hidden; line-height: 1.6; }
+
+        /* ================= ASTRONOMIC BACKGROUND ================= */
+        .stars {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(106, 27, 154, 0.15), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(26, 115, 232, 0.15), transparent 50%);
+        }
+        .star { position: absolute; background-color: white; border-radius: 50%; animation: twinkle infinite alternate; }
+        @keyframes twinkle { 0% { opacity: 0.1; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 8px white; } }
+
+        /* ================= PAGE DE GARDE ================= */
+        .cover-page {
+            min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; position: relative; padding: 2rem;
+        }
+        .cover-header { text-transform: uppercase; letter-spacing: 3px; color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+        .cover-title { font-size: 4rem; font-weight: 800; background: linear-gradient(135deg, var(--pixel-blue), var(--pixel-violet)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem; text-shadow: 0 0 40px rgba(161, 66, 244, 0.4); line-height: 1.2; }
+        .cover-subtitle { font-size: 1.8rem; color: var(--text-main); margin-bottom: 4rem; font-weight: 300; }
+        .cover-details { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); padding: 2.5rem 4rem; border-radius: 20px; box-shadow: var(--glow-shadow); }
+        .cover-details h3 { color: var(--pixel-blue); font-size: 1.4rem; margin-bottom: 0.5rem; }
+        .cover-details p { font-size: 1.2rem; margin-bottom: 1.5rem; }
+        .cover-details .binomial { font-weight: bold; font-size: 1.3rem; color: var(--text-main); }
+        .scroll-indicator { position: absolute; bottom: 40px; animation: bounce 2s infinite; color: var(--pixel-blue); font-size: 2rem; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 60% { transform: translateY(-10px); } }
+
+        /* ================= LAYOUT ================= */
+        .container { max-width: 1200px; margin: 0 auto; padding: 4rem 2rem; }
+        .section-title { font-size: 2.5rem; color: var(--pixel-blue); margin-bottom: 2rem; border-bottom: 2px solid var(--pixel-violet); padding-bottom: 0.5rem; display: inline-block; }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 2.5rem; margin-bottom: 3rem; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+
+        /* ================= TABS ================= */
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; justify-content: center; flex-wrap: wrap; }
+        .tab-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--pixel-blue); color: var(--pixel-blue); padding: 1rem 2rem; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 1.1rem; transition: all 0.3s ease; }
+        .tab-btn:hover, .tab-btn.active { background: linear-gradient(90deg, var(--pixel-dark-blue), var(--pixel-violet)); color: #fff; border-color: transparent; box-shadow: 0 0 20px var(--pixel-violet); }
+        .tab-content { display: none; animation: fadeIn 0.5s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ================= CODE BLOCKS ================= */
+        pre { background: #0d0d1a; border-left: 4px solid var(--pixel-violet); padding: 1.5rem; border-radius: 8px; overflow-x: auto; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; color: #a6accd; margin-top: 1.5rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        code .keyword { color: #89ddff; } code .function { color: #82aaff; } code .comment { color: #546e7a; font-style: italic; } code .string { color: #c3e88d; }
+
+        /* ================= HARDWARE VISUALIZATION ================= */
+        .hardware-container { display: flex; align-items: center; justify-content: center; gap: 2.5rem; margin: 1rem 0 2rem 0; padding: 3rem; background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%); border-radius: 16px; position: relative; flex-wrap: wrap;}
+        .board { width: 140px; height: 200px; background: #e0e0e0; border-radius: 12px; position: relative; box-shadow: 0 0 25px rgba(255,255,255,0.15); display: flex; flex-direction: column; align-items: center; }
+        .board::before { content: "NUCLEO C031"; color: #333; font-weight: bold; font-size: 0.85rem; margin-top: 15px; }
+        .chip { width: 45px; height: 45px; background: #222; margin-top: 25px; border-radius: 4px; }
+        .pin { width: 12px; height: 12px; background: #333; border-radius: 50%; position: absolute; }
+        .pin.pb8 { right: 10px; top: 60px; background: #f44336; box-shadow: 0 0 10px #f44336; } /* SCL */
+        .pin.pb9 { right: 10px; top: 80px; background: #4caf50; box-shadow: 0 0 10px #4caf50; } /* SDA */
+        .pin.pa0 { left: 10px; top: 80px; background: #ff9800; box-shadow: 0 0 10px #ff9800; } /* ADC */
+        
+        .component { text-align: center; display: flex; flex-direction: column; align-items: center;}
+        
+        /* LCD Screen Styling */
+        .lcd-module { background: #222; padding: 15px; border-radius: 8px; border: 2px solid #555; display: inline-block; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
+        .lcd-screen { background: var(--lcd-bg); color: var(--lcd-text); font-family: 'Courier New', Courier, monospace; font-size: 1.4rem; padding: 10px; border-radius: 4px; border: 3px solid #111; width: 260px; height: 80px; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; text-transform: uppercase; letter-spacing: 2px;}
+        .lcd-line { white-space: pre; margin: 2px 0;}
+
+        /* Wire styling */
+        .wire-group { display: flex; flex-direction: column; gap: 16px; }
+        .wire { height: 4px; width: 60px; }
+
+        /* Potentiometer Styling */
+        .pot-container { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid #ff9800; display: flex; flex-direction: column; align-items: center;}
+        .slider { -webkit-appearance: none; width: 120px; height: 8px; border-radius: 5px; background: #333; outline: none; margin: 15px 0; }
+        .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #ff9800; cursor: pointer; box-shadow: 0 0 10px #ff9800; }
+
+        /* ================= POST-LAB ================= */
+        .qa-grid { display: flex; flex-direction: column; gap: 2rem; }
+        .qa-card { background: rgba(0, 0, 0, 0.3); border-left: 4px solid var(--pixel-violet); padding: 2rem; border-radius: 8px; transition: all 0.3s ease; }
+        .qa-card:hover { background: rgba(161, 66, 244, 0.1); transform: translateX(10px); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .qa-question { font-size: 1.3rem; font-weight: bold; color: var(--pixel-blue); margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(138, 180, 248, 0.2); padding-bottom: 10px;}
+        .qa-question::before { content: "Q:"; color: var(--pixel-violet); font-size: 1.5rem; }
+        .qa-answer { color: var(--text-main); line-height: 1.8; font-size: 1.05rem; }
+        .qa-answer strong { color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div class="stars" id="stars"></div>
+
+    <section class="cover-page">
+        <div class="cover-header">Université / Département d'Électronique</div>
+        <h1 class="cover-title">Pilotage Écran LCD (I2C)</h1>
+        <h2 class="cover-subtitle">Travaux Pratiques N°3 - Systèmes Embarqués</h2>
+        
+        <div class="cover-details">
+            <h3>Binôme Réalisateur</h3>
+            <p class="binomial">Dahane Ahmed Lamine<br>& Tabbi Meriem</p>
+            
+            <h3>Enseignante Responsable</h3>
+            <p>Mme. Afaf Saoud</p>
+            
+            <h3 style="margin-top: 1rem; font-size: 1rem; color: var(--text-muted);">Année Universitaire 2025/2026</h3>
+        </div>
+        
+        <div class="scroll-indicator">↓</div>
+    </section>
+
+    <div class="container">
+        
+        <h2 class="section-title">1. Jumeau Numérique & Codes Sources</h2>
+        <section class="glass-panel">
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab(event, 'part1', 1)">Manip 1 : Texte Séquentiel</button>
+                <button class="tab-btn" onclick="openTab(event, 'part2', 2)">Manip 2 : ADC & LCD (Post-Lab)</button>
+            </div>
+
+            <div class="hardware-container">
+                
+                <div class="component" id="pot-module" style="display: none; position: absolute; left: 10%;">
+                    <div class="pot-container">
+                        <span style="font-weight: bold; color: #ff9800; font-size: 0.9rem;">Potentiomètre (PA0)</span>
+                        <input type="range" min="0" max="4095" value="2048" class="slider" id="adc-slider">
+                    </div>
+                </div>
+
+                <div class="board">
+                    <div class="chip"></div>
+                    <div class="pin pa0" title="PA0 (ADC)"></div>
+                    <div class="pin pb8" title="PB8 (SCL)"></div>
+                    <div class="pin pb9" title="PB9 (SDA)"></div>
+                </div>
+                
+                <div class="wire-group">
+                    <div class="wire" style="background: #f44336; position: relative;">
+                        <span style="position: absolute; top: -15px; font-size: 0.7rem; color: #f44336;">SCL</span>
+                    </div>
+                    <div class="wire" style="background: #4caf50; position: relative;">
+                        <span style="position: absolute; top: -15px; font-size: 0.7rem; color: #4caf50;">SDA</span>
+                    </div>
+                </div>
+                
+                <div class="component">
+                    <div class="lcd-module">
+                        <div class="lcd-screen">
+                            <div class="lcd-line" id="lcd-l1"></div>
+                            <div class="lcd-line" id="lcd-l2"></div>
+                        </div>
+                    </div>
+                    <p style="font-weight: bold; margin-top: 10px;">LCD 16x2 (Adresse 0x27)</p>
+                </div>
+            </div>
+
+            <div id="part1" class="tab-content active">
+                <h3 style="color: var(--pixel-blue); font-size: 1.5rem; margin-bottom: 0.5rem;">Affichage Séquentiel (Pro-Tip appliqué)</h3>
+                <p style="color: var(--text-muted);"><strong>Pro-Tip :</strong> Contrairement à ce qui est suggéré dans l'énoncé, l'initialisation de l'écran <code>lcd_init()</code> doit se faire <strong>une seule fois avant</strong> la boucle <code>while(1)</code>. Si on la met dedans, l'écran redémarre en boucle, ce qui provoque des clignotements désagréables.</p>
+                <pre><code><span class="comment">// --- AVANT LA BOUCLE WHILE ---</span>
+<span class="function">lcd_init</span>(&hi2c1); <span class="comment">// Initialisation propre une seule fois</span>
+
+<span class="comment">// --- DANS LA BOUCLE WHILE ---</span>
+<span class="keyword">while</span> (1) 
+{ 
+    <span class="comment">// Séquence 1</span>
+    <span class="function">lcd_set_cursor</span>(0, 0); 
+    <span class="function">lcd_print</span>(<span class="string">"Embedded System "</span>); 
+    <span class="function">lcd_set_cursor</span>(1, 0); 
+    <span class="function">lcd_print</span>(<span class="string">"Lab Session     "</span>); 
+    <span class="function">HAL_Delay</span>(2000); 
+    
+    <span class="comment">// Nettoyage</span>
+    <span class="function">lcd_clear</span>(); 
+    
+    <span class="comment">// Séquence 2</span>
+    <span class="function">lcd_set_cursor</span>(0, 0); 
+    <span class="function">lcd_print</span>(<span class="string">"Day 1           "</span>); 
+    <span class="function">lcd_set_cursor</span>(1, 0); 
+    <span class="function">lcd_print</span>(<span class="string">"Subgroup 1      "</span>); 
+    <span class="function">HAL_Delay</span>(1500); 
+}</code></pre>
+            </div>
+
+            <div id="part2" class="tab-content">
+                <h3 style="color: var(--pixel-violet); font-size: 1.5rem; margin-bottom: 0.5rem;">Défi : Affichage dynamique (ADC + I2C)</h3>
+                <p style="color: var(--text-muted);">Réponse à la question 3 du Post-Lab. Utilisation de <code>sprintf()</code> pour formater les données numériques (ADC et Tension) en chaînes de caractères avant de les envoyer sur le bus I2C.</p>
+                <pre><code><span class="comment">// Bibliothèques requises : #include &lt;stdio.h&gt;</span>
+<span class="keyword">char</span> ligne1[16];
+<span class="keyword">char</span> ligne2[16];
+
+<span class="function">lcd_init</span>(&hi2c1);
+
+<span class="keyword">while</span>(1) {
+    <span class="comment">// 1. Lecture de l'ADC</span>
+    <span class="function">HAL_ADC_Start</span>(&hadc1);
+    <span class="function">HAL_ADC_PollForConversion</span>(&hadc1, 100);
+    uint32_t adc_val = <span class="function">HAL_ADC_GetValue</span>(&hadc1);
+    <span class="function">HAL_ADC_Stop</span>(&hadc1);
+
+    <span class="comment">// 2. Calcul de la tension</span>
+    <span class="keyword">float</span> tension = (adc_val * 3.3f) / 4095.0f;
+
+    <span class="comment">// 3. Formatage des chaînes (String Print Format)</span>
+    <span class="function">sprintf</span>(ligne1, <span class="string">"ADC: %4lu      "</span>, adc_val);
+    <span class="function">sprintf</span>(ligne2, <span class="string">"Tension: %.2fV "</span>, tension);
+
+    <span class="comment">// 4. Affichage I2C</span>
+    <span class="function">lcd_set_cursor</span>(0, 0);
+    <span class="function">lcd_print</span>(ligne1);
+    <span class="function">lcd_set_cursor</span>(1, 0);
+    <span class="function">lcd_print</span>(ligne2);
+    
+    <span class="function">HAL_Delay</span>(100); <span class="comment">// Rafraîchissement à 10Hz</span>
+}</code></pre>
+            </div>
+        </section>
+
+        <h2 class="section-title">2. Post-Lab : Analyse Technique</h2>
+        <section class="qa-grid">
+            
+            <div class="qa-card">
+                <div class="qa-question">Combien de fils économise-t-on en utilisant le module I2C par rapport à un branchement LCD classique (parallèle) ?</div>
+                <div class="qa-answer">
+                    <p>Un écran LCD HD44780 classique branché en mode parallèle nécessite une grande quantité de broches du microcontrôleur :</p>
+                    <ul>
+                        <li><strong>Mode 8 bits :</strong> 8 broches de données (D0-D7) + 3 broches de contrôle (RS, RW, EN) = <strong>11 broches GPIO</strong>.</li>
+                        <li><strong>Mode 4 bits (le plus courant) :</strong> 4 broches de données (D4-D7) + 3 broches de contrôle = <strong>7 broches GPIO</strong>.</li>
+                    </ul>
+                    <p>En ajoutant le module adaptateur <strong>I2C (PCF8574)</strong> à l'arrière du LCD, la communication se fait via un bus série synchrone qui ne nécessite que <strong>2 broches</strong> (SDA pour les données et SCL pour l'horloge).</p>
+                    <p><strong>Conclusion :</strong> On économise entre <strong>5 et 9 broches GPIO</strong> du STM32, ce qui est crucial pour libérer des ports pour d'autres capteurs ou actionneurs.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">Quelle est l'adresse I2C par défaut de votre écran ? Pourquoi est-elle importante si l'on veut brancher deux écrans sur le même bus ?</div>
+                <div class="qa-answer">
+                    <p>L'adresse I2C par défaut d'un module LCD équipé d'une puce PCF8574 est généralement <strong>0x27</strong> (ou <strong>0x3F</strong> selon le fabricant de la puce, PCF8574A ou PCF8574T).</p>
+                    <p><strong>Pourquoi est-ce important ?</strong> L'I2C est un "Bus". Cela signifie que l'on peut brancher des dizaines de composants différents (capteurs, mémoires, écrans) sur les *mêmes* deux fils (SDA et SCL). Pour que le Maître (le STM32) puisse parler à un composant précis sans que les autres ne répondent, il commence chaque message en envoyant une adresse unique.</p>
+                    <p>Si l'on veut brancher <strong>deux écrans LCD</strong> sur le même bus I2C, ils ne peuvent pas avoir la même adresse (sinon il y aurait un conflit de données). Il faut donc modifier physiquement l'adresse matérielle du second écran en soudant des ponts (pads A0, A1, A2) situés à l'arrière du module I2C pour lui donner, par exemple, l'adresse <strong>0x26</strong>.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">Modifiez le code pour afficher la valeur d'un potentiomètre (ADC) en temps réel sur l'écran.</div>
+                <div class="qa-answer">
+                    <p>La difficulté principale ici est qu'un écran LCD ne comprend que du texte (des caractères ASCII). Il ne sait pas afficher un nombre entier pur comme <code>2048</code> ou un float comme <code>1.65</code>.</p>
+                    <p>Il faut donc utiliser une fonction de la bibliothèque C standard (<code>&lt;stdio.h&gt;</code>) appelée <strong><code>sprintf()</code></strong>. Elle permet de convertir des variables numériques en chaînes de caractères formatées.</p>
+                    <p>Le code complet a été implémenté et démontré dans <strong>l'onglet "Manip 2"</strong> du simulateur ci-dessus. Le format <code>%4lu</code> force l'affichage sur 4 chiffres pour éviter que des "fantômes" d'anciens chiffres ne restent à l'écran quand la valeur diminue (ex: passer de 1000 à 999).</p>
+                </div>
+            </div>
+
+        </section>
+    </div>
+
+    <script>
+        // 1. Generation des étoiles
+        const starContainer = document.getElementById('stars');
+        for (let i = 0; i < 200; i++) {
+            let star = document.createElement('div');
+            star.className = 'star';
+            star.style.width = Math.random() * 3 + 'px';
+            star.style.height = star.style.width;
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.top = Math.random() * 100 + 'vh';
+            star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            star.style.animationDelay = Math.random() * 5 + 's';
+            starContainer.appendChild(star);
+        }
+
+        // ================= LOGIQUE DU JUMEAU NUMERIQUE =================
+        const lcdL1 = document.getElementById('lcd-l1');
+        const lcdL2 = document.getElementById('lcd-l2');
+        const potModule = document.getElementById('pot-module');
+        const adcSlider = document.getElementById('adc-slider');
+
+        let currentManip = 1;
+        let sequenceInterval = null;
+        let stateFlip = false;
+
+        function updateLCDText(t1, t2) {
+            // Remplir avec des espaces pour simuler le comportement d'effacement de l'écran 16x2
+            lcdL1.innerText = t1.padEnd(16, ' ').substring(0, 16);
+            lcdL2.innerText = t2.padEnd(16, ' ').substring(0, 16);
+        }
+
+        function runManip1() {
+            clearInterval(sequenceInterval);
+            updateLCDText("EMBEDDED SYSTEM", "LAB SESSION");
+            stateFlip = true;
+
+            sequenceInterval = setInterval(() => {
+                if(stateFlip) {
+                    updateLCDText("DAY 1", "SUBGROUP 1");
+                } else {
+                    updateLCDText("EMBEDDED SYSTEM", "LAB SESSION");
+                }
+                stateFlip = !stateFlip;
+            }, 2000);
+        }
+
+        function runManip2() {
+            clearInterval(sequenceInterval);
+            
+            // Fonction de mise à jour liée au slider
+            const updateFromSlider = () => {
+                const adcVal = parseInt(adcSlider.value);
+                const voltage = ((adcVal * 3.3) / 4095).toFixed(2);
+                
+                // Formatage à la manière de sprintf("%4lu", adcVal)
+                const adcStr = adcVal.toString().padStart(4, ' ');
+                
+                updateLCDText(`ADC: ${adcStr}`, `TENSION: ${voltage}V`);
+            };
+
+            // Met à jour au clic sur l'onglet
+            updateFromSlider();
+
+            // Met à jour au mouvement du slider
+            adcSlider.oninput = updateFromSlider;
+        }
+
+        // ================= GESTION DES ONGLETS =================
+        function openTab(evt, tabName, manipNum) {
+            currentManip = manipNum;
+
+            if (currentManip === 1) {
+                potModule.style.display = 'none';
+                adcSlider.oninput = null; // Détacher l'événement
+                runManip1();
+            } else {
+                potModule.style.display = 'flex';
+                runManip2();
+            }
+
+            let i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+                tabcontent[i].classList.remove("active");
+            }
+            tablinks = document.getElementsByClassName("tab-btn");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            setTimeout(() => document.getElementById(tabName).classList.add("active"), 10);
+            evt.currentTarget.className += " active";
+        }
+
+        // Démarrage initial
+        runManip1();
+    </script>
+</body>
+</html>
